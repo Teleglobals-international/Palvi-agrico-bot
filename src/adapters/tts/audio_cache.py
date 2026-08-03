@@ -13,7 +13,7 @@ import logging
 import struct
 import httpx
 
-from app.config import settings
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,8 +21,8 @@ logger = logging.getLogger(__name__)
 # B1 — Filler audio clips (pre-synthesized, never generated live)
 # ═══════════════════════════════════════════════════════════════
 FILLER_TEXTS = {
-    "marathwada": ["हा", "बरं", "हम्म"],
-    "vidarbha": ["हा", "बरं शे", "हम्म"],
+    "marathwada": ["हम्म", "होय", "बरोबर"],
+    "vidarbha": ["हम्म", "होय", "बरोबर"],
 }
 
 # Stores filler audio as mulaw bytes ready to stream
@@ -53,9 +53,9 @@ def _pcm_to_mulaw_byte(sample: int) -> int:
 
 
 def pcm_to_mulaw(pcm_bytes: bytes) -> bytes:
-    """Convert PCM16 LE bytes to mulaw for Twilio.
-    audioop.lin2ulaw produces standard G.711 mulaw.
-    Twilio also uses standard G.711 — no bit inversion needed.
+    """Convert PCM16 LE bytes to mulaw (G.711).
+    Used internally for audio caching. Output is converted back to PCM
+    when streaming to Exotel.
     """
     import audioop
     # Ensure even number of bytes (16-bit samples)
@@ -88,6 +88,8 @@ def _extract_pcm_from_wav(wav_bytes: bytes) -> bytes:
 async def _synthesize_to_mulaw(text: str) -> bytes:
     """Synthesize text to mulaw audio bytes via Sarvam TTS."""
     try:
+        from src.adapters.tts.sarvam_tts import preprocess_for_speech, TTS_CONFIG
+        speech_text = preprocess_for_speech(text)
         # Longer texts need more time
         timeout = 10.0 if len(text) > 150 else 6.0
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -98,12 +100,12 @@ async def _synthesize_to_mulaw(text: str) -> bytes:
                     "api-subscription-key": settings.SARVAM_API_KEY,
                 },
                 json={
-                    "inputs": [text],
-                    "target_language_code": "mr-IN",
-                    "model": "bulbul:v3",
-                    "speaker": "rupali",
-                    "pace": 1.0,
-                    "speech_sample_rate": 8000,
+                    "inputs": [speech_text],
+                    "target_language_code": TTS_CONFIG["target_language_code"],
+                    "model": TTS_CONFIG["model"],
+                    "speaker": TTS_CONFIG["speaker"],
+                    "pace": TTS_CONFIG["pace"],
+                    "speech_sample_rate": TTS_CONFIG["speech_sample_rate"],
                 }
             )
             if response.status_code == 200:

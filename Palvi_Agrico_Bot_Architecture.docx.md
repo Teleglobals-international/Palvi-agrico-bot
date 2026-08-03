@@ -2,99 +2,103 @@
 
 ---
 
-## Outbound Calling Architecture (Bot calls the farmer)
+## Outbound Calling Flow
 
 ```
 ┌──────────────┐        ┌──────────────┐        ┌──────────────────┐
 │              │  API    │              │  Dials  │                  │
-│  Our System  │ ─────→  │    Twilio    │ ─────→  │  Farmer's Phone  │
+│  Our System  │ ─────→  │   Exotel    │ ─────→  │  Farmer's Phone  │
 │  (Trigger)   │        │  (Calling)   │        │                  │
-│              │        │              │        │                  │
 └──────────────┘        └──────┬───────┘        └────────┬─────────┘
                                │                         │
-                               │ Sends farmer's          │ Farmer
-                               │ voice as text           │ speaks
+                               │ Opens WebSocket         │ Farmer
+                               │ (Voicebot Applet)       │ speaks
                                ▼                         │
                         ┌──────────────┐                 │
-                        │              │                 │
                         │  Our Server  │ ←───────────────┘
-                        │  (AWS EC2)   │
+                        │  (AWS EC2)   │   (PCM audio via WebSocket)
                         │              │
-                        │  Bot Brain   │
-                        │              │
-                        └──────┬───────┘
+                        │  ┌────────┐  │
+                        │  │ State  │  │
+                        │  │Machine │  │
+                        │  └───┬────┘  │
+                        └──────┼───────┘
                                │
-                               │ Sends reply text
-                               ▼
-                        ┌──────────────┐
+                        ┌──────┴───────┐
                         │  Sarvam AI   │
-                        │  (Voice)     │
-                        │              │
-                        │  Converts    │
-                        │  text to     │
-                        │  Marathi     │
-                        │  voice       │
-                        └──────┬───────┘
-                               │
-                               │ Audio played
-                               ▼
-                        ┌──────────────────┐
-                        │  Farmer hears    │
-                        │  natural Marathi │
-                        │  female voice    │
-                        └──────────────────┘
+                        │  STT + TTS   │
+                        └──────────────┘
 ```
 
 ---
 
-## Inbound Calling Architecture (Farmer calls our number)
+## Inbound Calling Flow
 
 ```
-┌──────────────────┐        ┌──────────────┐        ┌──────────────────┐
-│                  │  Calls  │              │  Sends  │                  │
-│  Farmer's Phone  │ ─────→  │    Twilio    │ ─────→  │    Our Server    │
-│                  │        │  (Receives)  │  call   │    (AWS EC2)     │
-│                  │        │              │  info   │                  │
-└──────────────────┘        └──────────────┘        └────────┬─────────┘
-                                                             │
-                                                             │ Same flow
-                                                             │ as outbound
-                                                             ▼
-                                                    (Bot greets, listens,
-                                                     responds, takes order)
+Farmer calls ExoPhone → Exotel Call Flow → Voicebot Applet → WebSocket → Our Server
+(Same conversation engine, same voice, same script)
 ```
 
 ---
 
-## Services Used
+## Modular Architecture
 
-| Service | What It Does | Used For |
-|---------|-------------|----------|
-| **Twilio** | Phone calling platform | Making calls, receiving calls, listening to farmer's voice and converting it to text |
-| **Sarvam AI** | Indian language voice generator | Converting bot's Marathi text into natural human-like female voice (Marathwada/Vidarbha accent) |
-| **AWS EC2** | Cloud computer | Running the bot's brain — decides what to say based on the sales script |
-| **AWS DynamoDB** | Cloud database | Storing call history, farmer details, and orders |
+```
+src/
+├── core/               # Business logic (framework-agnostic)
+│   ├── callFlow/       # 25+ step state machine
+│   ├── offerEngine/    # Lucky draw promotion
+│   └── productKnowledge/  # Product FAQs & recommendations
+│
+├── adapters/           # Swappable integrations
+│   ├── telephony/      # Exotel (can swap to Twilio/Ozonetel)
+│   ├── stt/            # Sarvam (can swap to Deepgram/Google)
+│   ├── tts/            # Sarvam (can swap to ElevenLabs)
+│   └── llm/            # Claude (can swap to GPT/Gemini)
+│
+├── modules/            # Feature-based API layer
+│   ├── calls/          # Call trigger & webhooks
+│   └── analytics/      # Call history & transcripts
+│
+├── config/             # Client-specific configuration
+│
+└── infra/              # Database, logging, queues
+    └── db/             # DynamoDB session manager
+```
 
 ---
 
-## How Each Service Connects
+## Services
 
-```
-Twilio ←→ Our Server (EC2) ←→ Sarvam AI
-                 ↕
-            DynamoDB
-         (saves call data)
-```
-
-- **Twilio** handles the phone line (calling + voice recognition)
-- **Our Server** is the brain (follows the sales script)
-- **Sarvam AI** is the voice (speaks natural Marathi)
-- **DynamoDB** is the memory (remembers everything)
+| Service | Role |
+|---------|------|
+| **Exotel** | Telephony — PSTN calling + bidirectional WebSocket audio streaming |
+| **Sarvam AI** | Marathi STT (streaming) + TTS (natural female voice) |
+| **AWS Bedrock (Claude)** | LLM fallback for unexpected farmer questions |
+| **AWS DynamoDB** | Session persistence + call history |
+| **AWS EC2** | Application hosting |
 
 ---
 
-## Summary
+## Data Flow (Single Turn)
 
-- **Outbound:** We trigger → Twilio calls farmer → Bot talks → Farmer responds → Bot continues
-- **Inbound:** Farmer calls our number → Twilio connects to bot → Same conversation happens
-- **Both use the same bot brain, same voice, same script — only the call direction is different.**
+```
+1. Farmer speaks → Exotel sends PCM audio via WebSocket
+2. Server streams audio to Sarvam STT → gets Marathi transcript
+3. State machine processes transcript:
+   - Scripted step? → Return pre-cached audio (0ms)
+   - FAQ match? → Return pre-cached FAQ answer (0ms)
+   - Off-script? → Call Claude → Generate TTS live (~2s)
+4. Convert audio to PCM16 → Stream back via WebSocket → Farmer hears response
+```
+
+---
+
+## Key Design Decisions
+
+- **State machine over LLM** — 90% of calls follow the script, no need for LLM
+- **Pre-cached audio** — All scripted responses synthesized at startup
+- **Mulaw internal cache** — Compact storage, converted to PCM16 on output
+- **Async everything** — DynamoDB writes, TTS calls never block the audio path
+- **Dialect detection** — Adapts vocabulary based on farmer's region
+- **Modular adapters** — Can swap telephony/STT/TTS/LLM without touching core logic

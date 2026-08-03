@@ -9,7 +9,7 @@ import logging
 import asyncio
 import boto3
 
-from app.config import settings
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 

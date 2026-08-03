@@ -9,7 +9,7 @@ from datetime import datetime
 from fastapi import APIRouter
 import boto3
 
-from app.config import settings
+from src.config.settings import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter()

@@ -6,10 +6,13 @@ load_dotenv()
 
 
 class Settings:
-    # Twilio
-    TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")
-    TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
-    TWILIO_FROM_NUMBER: str = os.getenv("TWILIO_FROM_NUMBER", "")
+    # Exotel
+    EXOTEL_API_KEY: str = os.getenv("EXOTEL_API_KEY", "")
+    EXOTEL_API_TOKEN: str = os.getenv("EXOTEL_API_TOKEN", "")
+    EXOTEL_ACCOUNT_SID: str = os.getenv("EXOTEL_ACCOUNT_SID", "")
+    EXOTEL_SUBDOMAIN: str = os.getenv("EXOTEL_SUBDOMAIN", "api.in.exotel.com")  # Mumbai region
+    EXOTEL_CALLER_ID: str = os.getenv("EXOTEL_CALLER_ID", "")  # Your ExoPhone number
+    EXOTEL_APP_ID: str = os.getenv("EXOTEL_APP_ID", "")  # Call flow App ID with Voicebot Applet
 
     # Sarvam AI (TTS + STT)
     SARVAM_API_KEY: str = os.getenv("SARVAM_API_KEY", "")
@@ -28,6 +31,10 @@ class Settings:
     # NOTE: ngrok adds an extra network hop. Latency measurements through this
     # setup are POC-only and not representative of final production latency.
     PUBLIC_WSS_URL: str = os.getenv("PUBLIC_WSS_URL", "wss://underwent-mothball-abreast.ngrok-free.dev")
+
+    # Exotel audio config
+    # Exotel Voicebot Applet sends Linear PCM 16-bit at this sample rate
+    EXOTEL_SAMPLE_RATE: int = int(os.getenv("EXOTEL_SAMPLE_RATE", "8000"))
 
     # VAD / Silence Detection
     # Only safe to tighten because backchannel filler audio (B1) masks the

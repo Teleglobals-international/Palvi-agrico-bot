@@ -1,97 +1,161 @@
-# Palvi Agrico — AI Voice Sales Bot
+# Palvi Agrico Voice Bot
 
-Agricultural product sales bot that calls farmers and pitches Palvi Agrico products in regional Marathi (Marathwada / Vidarbha accent) over phone calls.
+AI-powered outbound sales voice agent for Palvi Agrico (agricultural products). Speaks Marathi with Marathwada/Vidarbha dialect support. Built on Exotel + Sarvam AI + Claude.
+
+---
 
 ## Architecture
 
 ```
-Farmer's Phone
-      ↕
-Twilio (Voice Calls + Speech Recognition)
-      ↕
-FastAPI Server (AWS EC2)
-  ├── Orchestrator (Conversation flow — sales script)
-  ├── Dialect Detector (Marathwada / Vidarbha / Standard)
-  ├── Sarvam AI TTS (Text → Natural Marathi Female Voice)
-  └── Session Manager (AWS DynamoDB)
+Farmer's Phone ←→ Exotel (Voicebot Applet) ←→ Our Server (WebSocket) ←→ Sarvam AI (STT/TTS)
+                                                        ↕
+                                                   Claude (LLM fallback)
+                                                        ↕
+                                                   DynamoDB (sessions)
 ```
 
-## Call Flow
+## Features (27)
 
-```
-Greet → Ask Availability → Ask Crop & Acres → Pitch Cytoboost →
-Ask Current Pump → Cross-sell Pump → Cross-sell Tarpaulin →
-Confirm Order → Collect Address → Thank You & Close
-```
+**Calling:** Outbound via API, inbound support, bidirectional WebSocket streaming, call history API
 
-## Tech Stack
+**Voice:** Marathi TTS (Sarvam), Marathi STT (streaming), dialect detection (Marathwada/Vidarbha), Hindi transcription handling
 
-| Component | Technology |
-|-----------|-----------|
-| Compute | AWS EC2 (t3.micro, Amazon Linux 2023) |
-| Language | Python 3.12 + FastAPI + Uvicorn |
-| Telephony | Twilio Voice API |
-| Speech-to-Text | Twilio Gather (mr-IN) |
-| Text-to-Speech | Sarvam AI (bulbul:v3, speaker: rupali) |
-| Database | AWS DynamoDB (palvi-sessions) |
-| Dialect Support | Marathwada, Vidarbha, Standard Marathi |
+**Latency Optimization:**
+- B1: Backchannel filler ("हम्म/होय") while processing
+- B2: Pre-cached script audio (zero TTS during calls)
+- B3: Early intent classification on partial transcripts
+- B4: Sentence-streamed TTS for long responses
+- B5: Async DynamoDB logging (off critical path)
+- B6: Configurable VAD (250ms silence threshold)
+- B7: Barge-in (farmer interrupts → playback stops)
+- B8: STT flush timeout (falls back to partial)
+- B9: Fast audio batching
 
-## Products Pitched
+**Intelligence:** 25+ step state machine, FAQ keyword matcher, Claude fallback for off-script questions, order capture, lucky draw promotion
 
-1. **Cytoboost** — Plant Growth Regulator (Gibberellic Acid 0.001%)
-2. **Spray Pumps** — Battery and Petrol operated
-3. **Tarpaulins** — HDPE, waterproof, multiple sizes
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/call/initiate` | Trigger outbound call to a farmer |
-| GET | `/calls/history` | Get all call history with conversations |
-| GET | `/calls/history/{call_sid}` | Get specific call details |
-| GET | `/health` | Health check |
-
-## Usage
-
-```bash
-# Initiate a call
-curl -X POST http://localhost:8000/call/initiate \
-  -H "Content-Type: application/json" \
-  -d '{"phone_number": "7066498822"}'
-
-# With specific dialect
-curl -X POST http://localhost:8000/call/initiate \
-  -H "Content-Type: application/json" \
-  -d '{"phone_number": "7066498822", "dialect": "vidarbha"}'
-```
+---
 
 ## Project Structure
 
 ```
-app/
-├── config.py                 — Environment variable loading
-├── main.py                   — FastAPI app + audio serving
-├── orchestrator/
-│   └── graph.py              — Conversation flow + 3 dialect responses
-├── routes/
-│   ├── twilio_routes.py      — Twilio voice webhooks
-│   ├── call_trigger_routes.py — Call initiation API
-│   └── call_history_routes.py — Call history API
-└── services/
-    ├── sarvam_tts.py         — Sarvam AI TTS + in-memory caching
-    ├── session_manager.py    — DynamoDB session management
-    └── dialect_detector.py   — Speech-based dialect detection
+src/
+├── main.py                          # FastAPI entry point
+├── config/
+│   └── settings.py                  # Environment config
+├── core/
+│   ├── callFlow/
+│   │   ├── state_machine.py         # Conversation state machine
+│   │   ├── scripts.py              # All scripted Marathi texts
+│   │   └── precache.py             # Pre-cache audio at startup
+│   ├── offerEngine/
+│   │   └── scheme.py               # Lucky draw scheme logic
+│   └── productKnowledge/
+│       ├── products.py             # Product recommendations & FAQs
+│       └── faq_matcher.py          # Keyword-based FAQ matching
+├── adapters/
+│   ├── telephony/
+│   │   └── exotel_ws.py            # Exotel WebSocket handler
+│   ├── stt/
+│   │   ├── sarvam_stream.py        # Streaming STT client
+│   │   ├── intent_classifier.py    # Early intent on partials
+│   │   └── dialect_detector.py     # Dialect detection
+│   ├── tts/
+│   │   ├── sarvam_tts.py           # TTS + disk/memory cache
+│   │   └── audio_cache.py          # Filler audio, codec conversion
+│   └── llm/
+│       └── claude.py               # Claude/Bedrock fallback
+├── modules/
+│   ├── calls/
+│   │   ├── exotel_webhooks.py      # Status/passthru webhooks
+│   │   └── trigger.py             # POST /call/initiate
+│   └── analytics/
+│       └── history.py             # GET /calls/history
+└── infra/
+    └── db/
+        └── session_manager.py      # DynamoDB session storage
 ```
+
+---
+
+## Services Used
+
+| Service | Purpose |
+|---------|---------|
+| **Exotel** | Telephony — outbound calls, Voicebot Applet (WebSocket audio streaming) |
+| **Sarvam AI** | Marathi STT (streaming WebSocket) + TTS (bulbul:v3, speaker: priya) |
+| **AWS Bedrock (Claude)** | LLM fallback for off-script questions (~10% of turns) |
+| **AWS DynamoDB** | Session persistence, call history, order data |
+| **AWS EC2** | Application server |
+
+---
 
 ## Setup
 
-1. Create EC2 instance with IAM role (DynamoDB access)
-2. Install Python 3.12
-3. Copy code to EC2
-4. Create `.env` from `.env.example` and fill in keys
-5. Install dependencies: `pip install -r requirements.txt`
-6. Run: `python3.12 -m uvicorn app.main:app --host 0.0.0.0 --port 8000`
+### 1. Environment
 
-## Language
+```env
+EXOTEL_API_KEY=your_api_key
+EXOTEL_API_TOKEN=your_api_token
+EXOTEL_ACCOUNT_SID=your_account_sid
+EXOTEL_SUBDOMAIN=api.exotel.com
+EXOTEL_CALLER_ID=your_exophone
+EXOTEL_APP_ID=your_call_flow_id
 
-Marathi only — Marathwada accent (default), auto-switches to Vidarbha if detected from farmer's speech.
+SARVAM_API_KEY=your_sarvam_key
+SARVAM_TTS_URL=https://api.sarvam.ai/text-to-speech
+
+AWS_REGION=us-east-1
+DYNAMODB_SESSION_TABLE=palvi-sessions
+
+APP_HOST=0.0.0.0
+APP_PORT=8000
+BASE_URL=http://your-server:8000
+PUBLIC_WSS_URL=wss://your-domain.com
+EXOTEL_SAMPLE_RATE=8000
+SILENCE_THRESHOLD_MS=250
+```
+
+### 2. Exotel Dashboard
+
+1. Create a **Call Flow** with a **Voicebot Applet** (bidirectional)
+2. Set endpoint: `wss://your-domain.com/media-stream?sample-rate=8000`
+3. Add a **Hangup** applet after the Voicebot
+4. Note the App ID for `EXOTEL_APP_ID`
+
+### 3. Run
+
+```bash
+pip install -r requirements.txt
+uvicorn src.main:app --host 0.0.0.0 --port 8000
+```
+
+### 4. Test Outbound Call
+
+```bash
+curl -X POST http://localhost:8000/call/initiate \
+  -H "Content-Type: application/json" \
+  -d '{"phone_number": "9876543210", "dialect": "marathwada"}'
+```
+
+---
+
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/call/initiate` | Start outbound call |
+| POST | `/voice/status` | Exotel status callback |
+| GET | `/voice/passthru` | Exotel passthru (post-voicebot) |
+| WS | `/media-stream` | Exotel Voicebot Applet WebSocket |
+| GET | `/calls/history` | All call transcripts |
+| GET | `/calls/history/{call_sid}` | Single call detail |
+| GET | `/health` | Health check |
+
+---
+
+## Docker
+
+```bash
+docker build -t palvi-agrico-bot .
+docker run -p 8000:8000 --env-file .env palvi-agrico-bot
+```

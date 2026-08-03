@@ -2,8 +2,8 @@
 Auto-detect dialect from the farmer's spoken response.
 
 Analyzes speech text for regional Marathi dialect markers.
-IMPORTANT: Twilio speech recognition uses hi-IN, so Marathi dialect words
-get transcribed as Hindi approximations. We match both native Marathi
+NOTE: STT may transcribe Marathi dialect words as Hindi approximations
+depending on the speech model. We match both native Marathi
 and Hindi-transcribed versions.
 
 - Marathwada: व्हय, हाय, तुमास्नी, नाय, बरं, की, etc.
@@ -23,7 +23,7 @@ MARATHWADA_MARKERS = [
     "लागतंय", "मारलं", "केलं", "गेलं", "आलं", "बसलो",
     "जातोय", "येतोय", "करा की", "द्या की", "मिळालं",
     "हाय की", "सांगतो की",
-    # Hindi transcription variants (how Twilio hears Marathwada Marathi)
+    # Hindi transcription variants (how STT may hear Marathwada Marathi)
     "वही", "वहय", "है की", "बोलो की", "करो की", "दो की",
     "है बा", "काय बा", "बोला की", "बरा है",
 ]
