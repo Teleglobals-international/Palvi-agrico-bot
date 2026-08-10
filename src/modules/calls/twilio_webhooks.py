@@ -13,6 +13,7 @@ from fastapi.responses import PlainTextResponse, Response
 
 from src.config.settings import settings
 from src.infra.db.session_manager import SessionManager
+from src.modules.calls.live_broadcast import broadcaster
 from src.core.callFlow.state_machine import process_turn
 from src.core.callFlow.scripts import GREETING, NO_INPUT_RESPONSE, THANK_YOU
 from src.adapters.tts.sarvam_tts import synthesize_speech_to_url
@@ -68,6 +69,11 @@ async def handle_outbound(request: Request):
     session["step"] = "ask_availability"
     session["conversation"] = [{"role": "bot", "text": GREETING}]
     session_manager.update(call_sid, session)
+
+    # Broadcast call started + greeting to live WebSocket
+    import asyncio
+    asyncio.ensure_future(broadcaster.publish_status(call_sid, "started"))
+    asyncio.ensure_future(broadcaster.publish_turn(call_sid, "bot", GREETING, "ask_availability"))
 
     # Generate greeting audio URL
     audio_url = await synthesize_speech_to_url(GREETING)
@@ -125,6 +131,13 @@ async def handle_incoming(request: Request):
     session["conversation"] = session.get("conversation", [])
     session["conversation"].append({"role": "bot", "text": bot_reply})
     session_manager.update(call_sid, session)
+
+    # Broadcast live conversation to frontend WebSocket
+    import asyncio
+    step = session.get("step", "")
+    if speech_result:
+        asyncio.ensure_future(broadcaster.publish_turn(call_sid, "farmer", speech_result, step))
+    asyncio.ensure_future(broadcaster.publish_turn(call_sid, "bot", bot_reply, step))
 
     logger.info(f"[TWILIO WEBHOOK] Bot reply: '{bot_reply[:60]}', Step={session.get('step')}")
 
@@ -277,6 +290,8 @@ async def handle_status(request: Request):
 
         # End session if call completed
         if call_status in ("completed", "failed", "busy", "no-answer"):
+            import asyncio
+            asyncio.ensure_future(broadcaster.publish_status(call_sid, "ended"))
             session_manager.end_session(call_sid)
 
     except Exception as e:
