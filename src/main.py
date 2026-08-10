@@ -17,6 +17,7 @@ from src.modules.calls.twilio_webhooks import router as twilio_webhooks_router
 from src.modules.calls.trigger import router as exotel_trigger_router
 from src.modules.calls.twilio_trigger import router as twilio_trigger_router
 from src.modules.analytics.history import router as history_router
+from src.modules.calls.live_ws import router as live_ws_router
 from src.adapters.tts.sarvam_tts import get_cached_audio
 from src.core.callFlow.scripts import (
     ALL_SCRIPTED_TEXTS, GREETING, COMPANY_INTRO, COMPANY_INTRO_2, ASK_CROP,
@@ -66,10 +67,10 @@ app = FastAPI(title="Palvi Agrico Voice Bot", version="2.1.0", lifespan=lifespan
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
-)
+)   
 
 # Routes — conditionally include based on telephony provider
 if settings.TELEPHONY_PROVIDER == "twilio":
@@ -80,6 +81,7 @@ else:
     app.include_router(exotel_trigger_router, prefix="/call", tags=["Call Trigger"])
 
 app.include_router(history_router, prefix="/calls", tags=["Call History"])
+app.include_router(live_ws_router, tags=["Live Call"])
 
 
 @app.get("/audio/{filename}")
