@@ -87,9 +87,10 @@ def _is_question(text):
 
 async def process_turn(user_text: str, session: dict) -> str:
     """
-    State machine for the call script.
-    Hardcoded questions = instant (pre-cached TTS).
-    Claude only called for off-script farmer questions.
+    State machine for the Lucky Draw pitch-first call flow.
+
+    Primary flow: Greeting → Lucky Draw Details → Gifts → Rules → Ask Order → Address → Thank You
+    Secondary: If farmer asks about products/crops → FAQ answers, then returns to scheme flow.
     """
     step = session.get("step", "greet")
     logger.info(f"[GRAPH] Step={step}, Input='{user_text[:40]}'")
@@ -113,306 +114,9 @@ async def process_turn(user_text: str, session: dict) -> str:
             session_manager.update(session["call_sid"], session)
             return NO_TIME_RESPONSE
 
-        session["step"] = "ask_crop"
-        full_intro = COMPANY_INTRO + " " + COMPANY_INTRO_2 + " " + ASK_CROP
-        session["conversation"].append({"role": "bot", "text": full_intro})
-        session_manager.update(session["call_sid"], session)
-        return full_intro
-
-    # ── ASK CROP ──────────────────────────────────────────────
-    if step == "ask_crop":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        # Check if farmer asked a question instead of answering
-        if _is_question(user_text):
-            # Try FAQ first (instant, pre-cached)
-            faq = try_faq(user_text)
-            if faq:
-                reply = faq + " तर सर, तुम्ही कोणतं पीक लावलंय?"
-            else:
-                # Fall back to Claude
-                reply = await call_claude(session["conversation"])
-                if reply:
-                    reply = reply + " तर सर, तुम्ही कोणतं पीक लावलंय?"
-                else:
-                    reply = RE_ASK_CROP
-            session["conversation"].append({"role": "bot", "text": reply})
-            session_manager.update(session["call_sid"], session)
-            return reply
-        # If farmer said something very generic like "ठीक आहे", "ok", "बरं"
-        # without giving a crop name, re-ask
-        generic = ["ठीक", "ok", "बरं", "हो", "ओके", "अच्छा"]
-        if any(user_text.strip().lower() == g for g in generic) or len(user_text.strip()) <= 3:
-            session["conversation"].append({"role": "bot", "text": RE_ASK_CROP})
-            session_manager.update(session["call_sid"], session)
-            return RE_ASK_CROP
-        # Store crop and move to acreage
-        session["crop"] = user_text
-        session["step"] = "ask_acreage"
-        session["conversation"].append({"role": "bot", "text": Q_ACREAGE})
-        session_manager.update(session["call_sid"], session)
-        return Q_ACREAGE
-
-    # ── ASK ACREAGE ───────────────────────────────────────────
-    if step == "ask_acreage":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_question(user_text):
-            faq = try_faq(user_text)
-            reply = faq if faq else await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        session["acreage"] = user_text
-        session["step"] = "ask_variety"
-        session["conversation"].append({"role": "bot", "text": Q_VARIETY})
-        session_manager.update(session["call_sid"], session)
-        return Q_VARIETY
-
-    # ── ASK VARIETY ───────────────────────────────────────────
-    if step == "ask_variety":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_question(user_text):
-            faq = try_faq(user_text)
-            reply = faq if faq else await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        session["variety"] = user_text
-        session["step"] = "ask_days"
-        session["conversation"].append({"role": "bot", "text": Q_DAYS})
-        session_manager.update(session["call_sid"], session)
-        return Q_DAYS
-
-    # ── ASK DAYS ──────────────────────────────────────────────
-    if step == "ask_days":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_question(user_text):
-            faq = try_faq(user_text)
-            reply = faq if faq else await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        session["days"] = user_text
-        session["step"] = "ask_weather"
-        session["conversation"].append({"role": "bot", "text": Q_WEATHER})
-        session_manager.update(session["call_sid"], session)
-        return Q_WEATHER
-
-    # ── ASK WEATHER ───────────────────────────────────────────
-    if step == "ask_weather":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_question(user_text):
-            faq = try_faq(user_text)
-            reply = faq if faq else await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        session["weather"] = user_text
-        session["step"] = "ask_pest"
-        session["conversation"].append({"role": "bot", "text": Q_PEST})
-        session_manager.update(session["call_sid"], session)
-        return Q_PEST
-
-    # ── ASK PEST ──────────────────────────────────────────────
-    if step == "ask_pest":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_question(user_text):
-            faq = try_faq(user_text)
-            reply = faq if faq else await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        if _is_no(user_text):
-            # No pest → ask about growth directly
-            session["step"] = "ask_growth"
-            session["conversation"].append({"role": "bot", "text": Q_GROWTH})
-            session_manager.update(session["call_sid"], session)
-            return Q_GROWTH
-        # Yes pest → ask which pest
-        session["step"] = "ask_which_pest"
-        session["conversation"].append({"role": "bot", "text": Q_WHICH_PEST})
-        session_manager.update(session["call_sid"], session)
-        return Q_WHICH_PEST
-
-    # ── ASK WHICH PEST ────────────────────────────────────────
-    if step == "ask_which_pest":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_question(user_text):
-            faq = try_faq(user_text)
-            reply = faq if faq else await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        session["pest"] = user_text
-        session["step"] = "ask_pest_level"
-        session["conversation"].append({"role": "bot", "text": Q_PEST_LEVEL})
-        session_manager.update(session["call_sid"], session)
-        return Q_PEST_LEVEL
-
-    # ── ASK PEST LEVEL → RECOMMEND CYMINT ─────────────────────
-    if step == "ask_pest_level":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        session["step"] = "after_cymint"
-        session["conversation"].append({"role": "bot", "text": CYMINT_RECOMMENDATION})
-        session_manager.update(session["call_sid"], session)
-        return CYMINT_RECOMMENDATION
-
-    # ── AFTER CYMINT → ASK GROWTH ─────────────────────────────
-    if step == "after_cymint":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_question(user_text):
-            reply = await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        session["step"] = "ask_growth"
-        session["conversation"].append({"role": "bot", "text": Q_GROWTH})
-        session_manager.update(session["call_sid"], session)
-        return Q_GROWTH
-
-    # ── ASK GROWTH → SIZE PLUS ────────────────────────────────
-    if step == "ask_growth":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_no(user_text) or "नाय" in user_text or "कमी" in user_text or "नाही" in user_text:
-            # Growth is bad → recommend Size Plus
-            session["step"] = "after_size_plus"
-            session["conversation"].append({"role": "bot", "text": SIZE_PLUS_RECOMMENDATION})
-            session_manager.update(session["call_sid"], session)
-            return SIZE_PLUS_RECOMMENDATION
-        # Growth is good → skip to both products
-        session["step"] = "both_products"
-        session["conversation"].append({"role": "bot", "text": BOTH_PRODUCTS})
-        session_manager.update(session["call_sid"], session)
-        return BOTH_PRODUCTS
-
-    # ── AFTER SIZE PLUS → BOTH PRODUCTS ───────────────────────
-    if step == "after_size_plus":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        session["step"] = "both_products"
-        session["conversation"].append({"role": "bot", "text": BOTH_PRODUCTS})
-        session_manager.update(session["call_sid"], session)
-        return BOTH_PRODUCTS
-
-    # ── BOTH PRODUCTS → FERTILIZER ────────────────────────────
-    if step == "both_products":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_question(user_text):
-            faq = try_faq(user_text)
-            reply = faq if faq else await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        session["step"] = "ask_fertilizer"
-        session["conversation"].append({"role": "bot", "text": Q_FERTILIZER})
-        session_manager.update(session["call_sid"], session)
-        return Q_FERTILIZER
-
-    # ── FERTILIZER → ORDER ────────────────────────────────────
-    if step == "ask_fertilizer":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        session["step"] = "ask_order"
-        session["conversation"].append({"role": "bot", "text": Q_ORDER})
-        session_manager.update(session["call_sid"], session)
-        return Q_ORDER
-
-    # ── ORDER CONFIRMATION ────────────────────────────────────
-    if step == "ask_order":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_no(user_text):
-            # Skip to pump cross-sell
-            session["step"] = "ask_pump"
-            session["conversation"].append({"role": "bot", "text": Q_PUMP})
-            session_manager.update(session["call_sid"], session)
-            return Q_PUMP
-        # Yes → ask address
-        session["step"] = "ask_address"
-        session["conversation"].append({"role": "bot", "text": Q_ADDRESS})
-        session_manager.update(session["call_sid"], session)
-        return Q_ADDRESS
-
-    # ── ASK ADDRESS ───────────────────────────────────────────
-    if step == "ask_address":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        session["address"] = user_text
-        session["step"] = "ask_pump"
-        session["conversation"].append({"role": "bot", "text": Q_PUMP})
-        session_manager.update(session["call_sid"], session)
-        return Q_PUMP
-
-    # ── ASK PUMP ──────────────────────────────────────────────
-    if step == "ask_pump":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_question(user_text):
-            faq = try_faq(user_text)
-            reply = faq if faq else await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        # Regardless of what they say about current pump, offer ours
-        session["step"] = "pump_offer"
-        session["conversation"].append({"role": "bot", "text": Q_PUMP_OFFER})
-        session_manager.update(session["call_sid"], session)
-        return Q_PUMP_OFFER
-
-    # ── PUMP OFFER → handle farmer's interest ─────────────────
-    if step == "pump_offer":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_yes(user_text):
-            # Farmer interested — give brief confirmation and move on
-            session["conversation"].append({"role": "bot", "text": FAQ_PUMP_CONFIRM})
-            session["step"] = "ask_other_crop"
-            session_manager.update(session["call_sid"], session)
-            return FAQ_PUMP_CONFIRM
-        if _is_question(user_text):
-            faq = try_faq(user_text)
-            reply = faq if faq else await call_claude(session["conversation"])
-            if reply:
-                session["conversation"].append({"role": "bot", "text": reply})
-                session_manager.update(session["call_sid"], session)
-                return reply
-        # Farmer said no or anything else → move on
-        session["step"] = "ask_other_crop"
-        session["conversation"].append({"role": "bot", "text": Q_OTHER_CROP})
-        session_manager.update(session["call_sid"], session)
-        return Q_OTHER_CROP
-
-    # ── OTHER CROP → SCHEME PITCH ───────────────────────────
-    if step == "ask_other_crop":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        # Only restart if farmer explicitly says yes with a clear affirmative
-        explicit_yes = ["हो", "होय", "हा", "व्हय", "सांगा", "हवी"]
-        if any(w in user_text.lower().split() for w in explicit_yes) and "नाही" not in user_text.lower():
-            # Restart from crop question
-            session["step"] = "ask_crop"
-            session["conversation"].append({"role": "bot", "text": ASK_CROP})
-            session_manager.update(session["call_sid"], session)
-            return ASK_CROP
-        # Offer scheme before ending
-        session["step"] = "scheme_pitch"
-        session["conversation"].append({"role": "bot", "text": SCHEME_PITCH})
-        session_manager.update(session["call_sid"], session)
-        return SCHEME_PITCH
-
-    # ── SCHEME PITCH ──────────────────────────────────────────
-    if step == "scheme_pitch":
-        session["conversation"].append({"role": "farmer", "text": user_text})
-        if _is_no(user_text):
-            # Not interested → end call
-            session["step"] = "done"
-            session["should_close"] = True
-            session["conversation"].append({"role": "bot", "text": THANK_YOU})
-            session_manager.update(session["call_sid"], session)
-            return THANK_YOU
-        # If yes OR unclear (farmer didn't say no) → give details
+        # Go directly to scheme details (Lucky Draw is the main pitch)
         session["step"] = "scheme_details"
+        from src.core.offerEngine.scheme import SCHEME_DETAILS
         session["conversation"].append({"role": "bot", "text": SCHEME_DETAILS})
         session_manager.update(session["call_sid"], session)
         return SCHEME_DETAILS
@@ -434,6 +138,7 @@ async def process_turn(user_text: str, session: dict) -> str:
                 session_manager.update(session["call_sid"], session)
                 return reply
         session["step"] = "scheme_gifts"
+        from src.core.offerEngine.scheme import SCHEME_GIFTS
         session["conversation"].append({"role": "bot", "text": SCHEME_GIFTS})
         session_manager.update(session["call_sid"], session)
         return SCHEME_GIFTS
@@ -455,11 +160,12 @@ async def process_turn(user_text: str, session: dict) -> str:
                 session_manager.update(session["call_sid"], session)
                 return reply
         session["step"] = "scheme_rules"
+        from src.core.offerEngine.scheme import SCHEME_RULES
         session["conversation"].append({"role": "bot", "text": SCHEME_RULES})
         session_manager.update(session["call_sid"], session)
         return SCHEME_RULES
 
-    # ── SCHEME RULES → END ────────────────────────────────────
+    # ── SCHEME RULES → ASK ORDER ──────────────────────────────
     if step == "scheme_rules":
         session["conversation"].append({"role": "farmer", "text": user_text})
         if _is_no(user_text):
@@ -476,13 +182,91 @@ async def process_turn(user_text: str, session: dict) -> str:
                 session_manager.update(session["call_sid"], session)
                 return reply
         session["step"] = "scheme_end"
+        from src.core.offerEngine.scheme import SCHEME_END
         session["conversation"].append({"role": "bot", "text": SCHEME_END})
         session_manager.update(session["call_sid"], session)
         return SCHEME_END
 
-    # ── SCHEME END → DONE ─────────────────────────────────────
+    # ── SCHEME END → ORDER OR DONE ────────────────────────────
     if step == "scheme_end":
         session["conversation"].append({"role": "farmer", "text": user_text})
+        if _is_question(user_text):
+            faq = try_faq(user_text)
+            reply = faq if faq else await call_claude(session["conversation"])
+            if reply:
+                session["conversation"].append({"role": "bot", "text": reply})
+                session_manager.update(session["call_sid"], session)
+                return reply
+        if _is_yes(user_text):
+            # Farmer wants to order → ask address
+            session["step"] = "ask_address"
+            session["conversation"].append({"role": "bot", "text": Q_ADDRESS})
+            session_manager.update(session["call_sid"], session)
+            return Q_ADDRESS
+        # Farmer said no or unclear → thank and end
+        session["step"] = "done"
+        session["should_close"] = True
+        session["conversation"].append({"role": "bot", "text": THANK_YOU})
+        session_manager.update(session["call_sid"], session)
+        return THANK_YOU
+
+    # ── ASK ADDRESS ───────────────────────────────────────────
+    if step == "ask_address":
+        session["conversation"].append({"role": "farmer", "text": user_text})
+        if _is_question(user_text):
+            faq = try_faq(user_text)
+            reply = faq if faq else await call_claude(session["conversation"])
+            if reply:
+                session["conversation"].append({"role": "bot", "text": reply})
+                session_manager.update(session["call_sid"], session)
+                return reply
+        session["address"] = user_text
+        session["step"] = "ask_crop"
+        # After address, ask about crop for product recommendation
+        session["conversation"].append({"role": "bot", "text": ASK_CROP})
+        session_manager.update(session["call_sid"], session)
+        return ASK_CROP
+
+    # ── ASK CROP ──────────────────────────────────────────────
+    if step == "ask_crop":
+        session["conversation"].append({"role": "farmer", "text": user_text})
+        if _is_question(user_text):
+            faq = try_faq(user_text)
+            if faq:
+                reply = faq + " तर सर, तुम्ही कोणतं पीक लावलंय?"
+            else:
+                reply = await call_claude(session["conversation"])
+                if reply:
+                    reply = reply + " तर सर, तुम्ही कोणतं पीक लावलंय?"
+                else:
+                    reply = RE_ASK_CROP
+            session["conversation"].append({"role": "bot", "text": reply})
+            session_manager.update(session["call_sid"], session)
+            return reply
+        generic = ["ठीक", "ok", "बरं", "हो", "ओके", "अच्छा"]
+        if any(user_text.strip().lower() == g for g in generic) or len(user_text.strip()) <= 3:
+            session["conversation"].append({"role": "bot", "text": RE_ASK_CROP})
+            session_manager.update(session["call_sid"], session)
+            return RE_ASK_CROP
+        session["crop"] = user_text
+        session["step"] = "recommend_product"
+        # Recommend products based on crop
+        from src.core.productKnowledge.products import CYMINT_RECOMMENDATION
+        session["conversation"].append({"role": "bot", "text": CYMINT_RECOMMENDATION})
+        session_manager.update(session["call_sid"], session)
+        return CYMINT_RECOMMENDATION
+
+    # ── RECOMMEND PRODUCT → CONFIRM ORDER ─────────────────────
+    if step == "recommend_product":
+        session["conversation"].append({"role": "farmer", "text": user_text})
+        if _is_question(user_text):
+            faq = try_faq(user_text)
+            reply = faq if faq else await call_claude(session["conversation"])
+            if reply:
+                session["conversation"].append({"role": "bot", "text": reply})
+                session_manager.update(session["call_sid"], session)
+                return reply
+        # End call with thank you regardless
         session["step"] = "done"
         session["should_close"] = True
         session["conversation"].append({"role": "bot", "text": THANK_YOU})

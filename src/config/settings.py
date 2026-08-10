@@ -6,7 +6,15 @@ load_dotenv()
 
 
 class Settings:
-    # Exotel
+    # Telephony provider: "twilio" or "exotel"
+    TELEPHONY_PROVIDER: str = os.getenv("TELEPHONY_PROVIDER", "twilio")
+
+    # Twilio (Primary)
+    TWILIO_ACCOUNT_SID: str = os.getenv("TWILIO_ACCOUNT_SID", "")
+    TWILIO_AUTH_TOKEN: str = os.getenv("TWILIO_AUTH_TOKEN", "")
+    TWILIO_FROM_NUMBER: str = os.getenv("TWILIO_FROM_NUMBER", "")
+
+    # Exotel (Fallback)
     EXOTEL_API_KEY: str = os.getenv("EXOTEL_API_KEY", "")
     EXOTEL_API_TOKEN: str = os.getenv("EXOTEL_API_TOKEN", "")
     EXOTEL_ACCOUNT_SID: str = os.getenv("EXOTEL_ACCOUNT_SID", "")

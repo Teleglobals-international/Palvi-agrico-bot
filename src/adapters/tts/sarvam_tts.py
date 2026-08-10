@@ -30,8 +30,8 @@ TTS_CONFIG = {
     "model": "bulbul:v3",
     "speaker": "priya",
     "target_language_code": "mr-IN",
-    "pace": 0.92,  # Slightly slower for warmth and clarity
-    "speech_sample_rate": 8000,  # Phone quality (8kHz for Twilio)
+    "pace": 0.95,  # Natural conversational pace
+    "speech_sample_rate": 8000,  # Phone quality
 }
 
 

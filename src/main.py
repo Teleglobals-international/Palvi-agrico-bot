@@ -1,7 +1,8 @@
 """
 Palvi Agrico Voice Bot — FastAPI Application.
 
-Uses Exotel Voicebot Applet for bidirectional WebSocket audio streaming.
+Supports Twilio (primary) and Exotel (fallback) telephony providers.
+Provider is selected via TELEPHONY_PROVIDER environment variable.
 """
 import asyncio
 import logging
@@ -11,8 +12,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 
 from src.config.settings import settings
-from src.modules.calls.exotel_webhooks import router as exotel_router
-from src.modules.calls.trigger import router as trigger_router
+from src.modules.calls.exotel_webhooks import router as exotel_webhooks_router
+from src.modules.calls.twilio_webhooks import router as twilio_webhooks_router
+from src.modules.calls.trigger import router as exotel_trigger_router
+from src.modules.calls.twilio_trigger import router as twilio_trigger_router
 from src.modules.analytics.history import router as history_router
 from src.adapters.tts.sarvam_tts import get_cached_audio
 from src.core.callFlow.scripts import (
@@ -24,6 +27,7 @@ from src.core.productKnowledge.products import (
 )
 from src.core.callFlow.precache import pre_cache_static_responses
 from src.adapters.telephony.exotel_ws import handle_media_stream
+from src.adapters.telephony.twilio_ws import handle_twilio_media_stream
 from src.adapters.tts.audio_cache import init_filler_audio, init_script_cache
 
 logging.basicConfig(level=logging.INFO)
@@ -34,6 +38,7 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     """Pre-cache audio and initialize pipeline before accepting calls."""
     logger.info("[STARTUP] Initializing audio caches...")
+    logger.info(f"[STARTUP] Telephony provider: {settings.TELEPHONY_PROVIDER.upper()}")
 
     # B1: Pre-synthesize filler audio clips
     await init_filler_audio()
@@ -49,12 +54,15 @@ async def lifespan(app: FastAPI):
     await pre_cache_static_responses()
 
     logger.info(f"[STARTUP] Ready! Public WSS: {settings.PUBLIC_WSS_URL}")
-    logger.info(f"[STARTUP] Exotel Account: {settings.EXOTEL_ACCOUNT_SID}")
+    if settings.TELEPHONY_PROVIDER == "twilio":
+        logger.info(f"[STARTUP] Twilio From: {settings.TWILIO_FROM_NUMBER}")
+    else:
+        logger.info(f"[STARTUP] Exotel Account: {settings.EXOTEL_ACCOUNT_SID}")
     logger.info(f"[STARTUP] Sample Rate: {settings.EXOTEL_SAMPLE_RATE}Hz")
     yield
 
 
-app = FastAPI(title="Palvi Agrico Voice Bot", version="2.0.0", lifespan=lifespan)
+app = FastAPI(title="Palvi Agrico Voice Bot", version="2.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,33 +71,70 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Routes
-app.include_router(exotel_router, prefix="/voice", tags=["Exotel"])
-app.include_router(trigger_router, prefix="/call", tags=["Call Trigger"])
+# Routes — conditionally include based on telephony provider
+if settings.TELEPHONY_PROVIDER == "twilio":
+    app.include_router(twilio_webhooks_router, prefix="/voice", tags=["Twilio"])
+    app.include_router(twilio_trigger_router, prefix="/call", tags=["Call Trigger"])
+else:
+    app.include_router(exotel_webhooks_router, prefix="/voice", tags=["Exotel"])
+    app.include_router(exotel_trigger_router, prefix="/call", tags=["Call Trigger"])
+
 app.include_router(history_router, prefix="/calls", tags=["Call History"])
+
+
+@app.get("/audio/{filename}")
+async def serve_audio(filename: str):
+    """
+    Serve cached TTS audio files directly to Twilio.
+
+    Twilio's <Play> verb fetches audio from this endpoint.
+    Files are cached in memory by synthesize_speech_to_url().
+    """
+    text_hash = filename.replace(".wav", "")
+    audio_bytes = get_cached_audio(text_hash)
+    if not audio_bytes:
+        return Response(content="Not found", status_code=404)
+    return Response(
+        content=audio_bytes,
+        media_type="audio/wav",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "service": "palvi-agrico-bot", "provider": "exotel"}
+    return {
+        "status": "healthy",
+        "service": "palvi-agrico-bot",
+        "provider": settings.TELEPHONY_PROVIDER,
+    }
 
 
 @app.get("/")
 async def root():
-    return {"message": "Palvi Agrico Voice Bot is running (Exotel)"}
+    return {
+        "message": "Palvi Agrico Voice Bot is running",
+        "provider": settings.TELEPHONY_PROVIDER,
+    }
 
 
 @app.websocket("/media-stream")
 async def media_stream_endpoint(websocket: WebSocket):
     """
-    WebSocket endpoint for Exotel Voicebot Applet (bidirectional audio streaming).
+    WebSocket endpoint for bidirectional audio streaming.
 
-    Configure this URL in your Exotel Call Flow's Voicebot Applet:
-    wss://your-domain.com/media-stream?sample-rate=8000
+    Works with both Twilio Media Streams and Exotel Voicebot Applet.
+    The handler is selected based on TELEPHONY_PROVIDER setting.
     """
     logger.info(f"[WS] New connection attempt from {websocket.client}")
     logger.info(f"[WS] Query params: {websocket.query_params}")
     await websocket.accept()
-    logger.info("[WS] New Exotel media stream connection ACCEPTED")
-    await handle_media_stream(websocket)
-    logger.info("[WS] Exotel media stream disconnected")
+
+    if settings.TELEPHONY_PROVIDER == "twilio":
+        logger.info("[WS] New Twilio media stream connection ACCEPTED")
+        await handle_twilio_media_stream(websocket)
+        logger.info("[WS] Twilio media stream disconnected")
+    else:
+        logger.info("[WS] New Exotel media stream connection ACCEPTED")
+        await handle_media_stream(websocket)
+        logger.info("[WS] Exotel media stream disconnected")

@@ -8,7 +8,7 @@ These are pre-cached at startup for 0ms TTS latency.
 # ALL SCRIPTED RESPONSES (pre-cached at startup = 0ms TTS)
 # ═══════════════════════════════════════════════════════════════
 
-GREETING = "नमस्कार सर, मी पाल्वी ॲग्रिको मधून पूजा बोलतेय. तुम्हाला वेळ आहे का?"
+GREETING = "नमस्कार सर... मी पाल्वी ॲग्रिको कंपनी पुणे मधून ॲग्री डॉक्टर पूजा बोलतेय. सर... आमची स्वातंत्र्य दिनानिमित्त एक भव्य लकी ड्रॉ योजना चालू आहे. यामध्ये ट्रॅक्टर, दुचाकी, स्कूटर अशी मोठी बक्षिसे जिंकता येतात. सर, तुम्हाला याबद्दल सविस्तर सांगू का? फक्त दोन मिनिटं लागतील."
 NO_TIME_RESPONSE = "ठीक आहे सर, काही हरकत नाही. मी नंतर कॉल करते. धन्यवाद!"
 COMPANY_INTRO = "सर, आपली पाल्वी ॲग्रिको कंपनी शेतकऱ्यांना पीक लागवडीपासून ते काढणीपर्यंतची संपूर्ण माहिती आणि मार्गदर्शन देते."
 COMPANY_INTRO_2 = "तसेच शेतीसाठी लागणारे सर्व किटकनाशक, बुरशीनाशक, तणनाशक, ताडपत्री, स्प्रे पंप, आणि हार्डवेअरचे साहित्य आमच्याकडे उपलब्ध आहे."
@@ -58,12 +58,13 @@ from src.core.productKnowledge.products import (
     FAQ_TARPAULIN, FAQ_DELIVERY, FAQ_OFF_TOPIC, FAQ_PUMP_CONFIRM,
     FAQ_KIT, FAQ_OFFICE, FAQ_AUTHORIZED, FAQ_E_AGRI, FAQ_SERVICES,
     FAQ_FINTECH, FAQ_RESULT, FAQ_RETAILER, FAQ_SOIL_TEST, FAQ_APP,
-    FAQ_CYTOBOOST, FAQ_STATES, FAQ_ASSURED_GIFT,
+    FAQ_CYTOBOOST,
 )
 from src.core.offerEngine.scheme import (
     SCHEME_PITCH, SCHEME_DETAILS, SCHEME_GIFTS, SCHEME_RULES, SCHEME_END,
     FAQ_SCHEME_WHAT, FAQ_SCHEME_WHEN, FAQ_SCHEME_HOW,
     FAQ_SCHEME_COD, FAQ_SCHEME_COUPON, FAQ_SCHEME_TRUST,
+    FAQ_ASSURED_GIFT, FAQ_SCHEME_STATES,
 )
 
 ALL_SCRIPTED_TEXTS = [
@@ -78,5 +79,5 @@ ALL_SCRIPTED_TEXTS = [
     FAQ_SCHEME_WHAT, FAQ_SCHEME_WHEN, FAQ_SCHEME_HOW, FAQ_SCHEME_COD,
     FAQ_SCHEME_COUPON, FAQ_SCHEME_TRUST, FAQ_KIT, FAQ_OFFICE, FAQ_AUTHORIZED,
     FAQ_E_AGRI, FAQ_SERVICES, FAQ_FINTECH, FAQ_RESULT, FAQ_RETAILER,
-    FAQ_SOIL_TEST, FAQ_APP, FAQ_CYTOBOOST, FAQ_STATES, FAQ_ASSURED_GIFT,
+    FAQ_SOIL_TEST, FAQ_APP, FAQ_CYTOBOOST, FAQ_SCHEME_STATES, FAQ_ASSURED_GIFT,
 ]
