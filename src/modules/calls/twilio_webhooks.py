@@ -168,12 +168,20 @@ def _split_for_playback(text: str) -> list:
 
 
 async def _respond(text: str, call_sid: str, hangup: bool = False) -> Response:
-    """Generate TwiML response. Splits long text into multiple Play elements."""
-    # Split long text at sentence boundaries for uninterrupted playback
-    if len(text) > 150:
-        parts = _split_for_playback(text)
-    else:
+    """Generate TwiML response. Serves pre-cached audio as-is, splits only uncached long text."""
+    from src.adapters.tts.sarvam_tts import get_cached_audio
+    import hashlib
+
+    # Check if the FULL text is already pre-cached (scripted responses)
+    text_hash = hashlib.md5(text.encode()).hexdigest()
+    is_precached = get_cached_audio(text_hash) is not None
+
+    if is_precached or len(text) <= 150:
+        # Serve as single audio — already cached at startup or short enough
         parts = [text]
+    else:
+        # Long uncached text (Claude response) — split for sequential playback
+        parts = _split_for_playback(text)
 
     # Generate audio URLs for all parts
     play_elements = ""
