@@ -159,3 +159,4 @@ curl -X POST http://localhost:8000/call/initiate \
 docker build -t palvi-agrico-bot .
 docker run -p 8000:8000 --env-file .env palvi-agrico-bot
 ```
+# CI/CD Pipeline Active
