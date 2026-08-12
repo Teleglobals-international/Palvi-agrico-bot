@@ -189,7 +189,10 @@ async def _respond(text: str, call_sid: str, hangup: bool = False) -> Response:
     text_hash = hashlib.md5(text.encode()).hexdigest()
     is_precached = get_cached_audio(text_hash) is not None
 
-    if is_precached or len(text) <= 150:
+    # Always split on [[SPLIT]] markers regardless of cache status
+    if "[[SPLIT]]" in text:
+        parts = [p.strip() for p in text.split("[[SPLIT]]") if p.strip()]
+    elif is_precached or len(text) <= 150:
         # Serve as single audio — already cached at startup or short enough
         parts = [text]
     else:
@@ -220,10 +223,12 @@ async def _respond(text: str, call_sid: str, hangup: bool = False) -> Response:
     if hangup:
         twiml = f'<?xml version="1.0" encoding="UTF-8"?><Response>{play_elements}<Hangup/></Response>'
     else:
+        # Determine timeout based on audio length (longer responses need more time)
+        timeout = "15" if len(text) > 200 else "10"
         twiml = (
             '<?xml version="1.0" encoding="UTF-8"?><Response>'
             f'{play_elements}'
-            f'<Gather input="speech" action="{action}" method="POST" speechTimeout="3" language="mr-IN" timeout="10">'
+            f'<Gather input="speech" action="{action}" method="POST" speechTimeout="4" language="mr-IN" timeout="{timeout}">'
             '</Gather>'
             f'<Redirect method="POST">{no_input_url}</Redirect></Response>'
         )

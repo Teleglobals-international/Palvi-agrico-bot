@@ -99,7 +99,11 @@ async def serve_audio(filename: str):
     return Response(
         content=audio_bytes,
         media_type="audio/wav",
-        headers={"Cache-Control": "public, max-age=3600"},
+        headers={
+            "Cache-Control": "public, max-age=3600",
+            "Content-Length": str(len(audio_bytes)),
+            "Accept-Ranges": "bytes",
+        },
     )
 
 

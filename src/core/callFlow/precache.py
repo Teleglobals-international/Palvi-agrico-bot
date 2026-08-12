@@ -40,7 +40,14 @@ async def pre_cache_static_responses():
     """Pre-cache all scripted responses at startup."""
     logger.info("[GRAPH] Pre-caching all scripted responses...")
     for text in ALL_SCRIPTED_TEXTS:
+        # Cache the full text
         await pre_cache_audio(text)
+        # Also cache individual [[SPLIT]] parts so they're ready during calls
+        if "[[SPLIT]]" in text:
+            for part in text.split("[[SPLIT]]"):
+                part = part.strip()
+                if part:
+                    await pre_cache_audio(part)
 
     # Also cache combined intro
     full_intro = COMPANY_INTRO + " " + COMPANY_INTRO_2 + " " + ASK_CROP
