@@ -217,8 +217,8 @@ async def _respond(text: str, call_sid: str, hangup: bool = False) -> Response:
         play_elements = f'<Say language="mr-IN">{safe_text}</Say>'
 
     base_url = settings.BASE_URL.rstrip("/")
-    action = f"{base_url}/voice/incoming?call_sid={call_sid}"
-    no_input_url = f"{base_url}/voice/incoming?call_sid={call_sid}&amp;no_input=true"
+    action = f"{base_url}/api/voice/incoming?call_sid={call_sid}"
+    no_input_url = f"{base_url}/api/voice/incoming?call_sid={call_sid}&amp;no_input=true"
 
     if hangup:
         twiml = f'<?xml version="1.0" encoding="UTF-8"?><Response>{play_elements}<Hangup/></Response>'
@@ -241,8 +241,8 @@ def _build_twiml_response(
 ) -> Response:
     """Build TwiML XML response (used for greeting/short responses)."""
     base_url = settings.BASE_URL.rstrip("/")
-    action = f"{base_url}/voice/incoming?call_sid={call_sid}"
-    no_input_url = f"{base_url}/voice/incoming?call_sid={call_sid}&amp;no_input=true"
+    action = f"{base_url}/api/voice/incoming?call_sid={call_sid}"
+    no_input_url = f"{base_url}/api/voice/incoming?call_sid={call_sid}&amp;no_input=true"
 
     # Build Play or Say element
     if audio_url:

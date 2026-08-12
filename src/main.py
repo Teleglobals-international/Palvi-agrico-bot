@@ -37,24 +37,34 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Pre-cache audio and initialize pipeline before accepting calls."""
-    logger.info("[STARTUP] Initializing audio caches...")
+    """Start server immediately, cache audio in background."""
+    logger.info("[STARTUP] Initializing audio caches in background...")
     logger.info(f"[STARTUP] Telephony provider: {settings.TELEPHONY_PROVIDER.upper()}")
 
-    # B1: Pre-synthesize filler audio clips
-    await init_filler_audio()
+    # Start caching in background — server accepts requests immediately
+    async def _background_cache():
+        try:
+            # B1: Pre-synthesize filler audio clips
+            await init_filler_audio()
 
-    # B2: Pre-cache all scripted audio (no live TTS for these during calls)
-    await init_script_cache(ALL_SCRIPTED_TEXTS)
+            # B2: Pre-cache all scripted audio (no live TTS for these during calls)
+            await init_script_cache(ALL_SCRIPTED_TEXTS)
 
-    # Also cache the combined intro
-    full_intro = COMPANY_INTRO + " " + COMPANY_INTRO_2 + " " + ASK_CROP
-    await init_script_cache([full_intro])
+            # Also cache the combined intro
+            full_intro = COMPANY_INTRO + " " + COMPANY_INTRO_2 + " " + ASK_CROP
+            await init_script_cache([full_intro])
 
-    # Also cache static responses
-    await pre_cache_static_responses()
+            # Also cache static responses
+            await pre_cache_static_responses()
 
-    logger.info(f"[STARTUP] Ready! Public WSS: {settings.PUBLIC_WSS_URL}")
+            logger.info("[STARTUP] Background audio caching complete!")
+        except Exception as e:
+            logger.error(f"[STARTUP] Background caching error: {e}")
+
+    # Launch background task — don't block server startup
+    asyncio.create_task(_background_cache())
+
+    logger.info(f"[STARTUP] Server ready! (audio caching in background)")
     if settings.TELEPHONY_PROVIDER == "twilio":
         logger.info(f"[STARTUP] Twilio From: {settings.TWILIO_FROM_NUMBER}")
     else:
@@ -74,17 +84,17 @@ app.add_middleware(
 
 # Routes — conditionally include based on telephony provider
 if settings.TELEPHONY_PROVIDER == "twilio":
-    app.include_router(twilio_webhooks_router, prefix="/voice", tags=["Twilio"])
-    app.include_router(twilio_trigger_router, prefix="/call", tags=["Call Trigger"])
+    app.include_router(twilio_webhooks_router, prefix="/api/voice", tags=["Twilio"])
+    app.include_router(twilio_trigger_router, prefix="/api/call", tags=["Call Trigger"])
 else:
-    app.include_router(exotel_webhooks_router, prefix="/voice", tags=["Exotel"])
-    app.include_router(exotel_trigger_router, prefix="/call", tags=["Call Trigger"])
+    app.include_router(exotel_webhooks_router, prefix="/api/voice", tags=["Exotel"])
+    app.include_router(exotel_trigger_router, prefix="/api/call", tags=["Call Trigger"])
 
-app.include_router(history_router, prefix="/calls", tags=["Call History"])
-app.include_router(live_ws_router, tags=["Live Call"])
+app.include_router(history_router, prefix="/api/calls", tags=["Call History"])
+app.include_router(live_ws_router, prefix="/api", tags=["Live Call"])
 
 
-@app.get("/audio/{filename}")
+@app.get("/api/audio/{filename}")
 async def serve_audio(filename: str):
     """
     Serve cached TTS audio files directly to Twilio.
@@ -107,13 +117,19 @@ async def serve_audio(filename: str):
     )
 
 
-@app.get("/health")
+@app.get("/api/health")
 async def health_check():
     return {
         "status": "healthy",
         "service": "palvi-agrico-bot",
         "provider": settings.TELEPHONY_PROVIDER,
     }
+
+
+@app.get("/health")
+async def health_check_internal():
+    """Internal health check for ALB/ECS (no /api prefix needed)."""
+    return {"status": "healthy"}
 
 
 @app.get("/")
@@ -124,7 +140,7 @@ async def root():
     }
 
 
-@app.websocket("/media-stream")
+@app.websocket("/api/media-stream")
 async def media_stream_endpoint(websocket: WebSocket):
     """
     WebSocket endpoint for bidirectional audio streaming.

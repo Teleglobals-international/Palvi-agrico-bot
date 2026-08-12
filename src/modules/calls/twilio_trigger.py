@@ -69,8 +69,8 @@ async def initiate_call(request: CallRequest):
             call = twilio_client.calls.create(
                 to=phone,
                 from_=settings.TWILIO_FROM_NUMBER,
-                url=f"{settings.BASE_URL}/voice/outbound",
-                status_callback=f"{settings.BASE_URL}/voice/status",
+                url=f"{settings.BASE_URL}/api/voice/outbound",
+                status_callback=f"{settings.BASE_URL}/api/voice/status",
                 status_callback_event=["completed", "failed", "busy", "no-answer"],
             )
 
@@ -85,7 +85,7 @@ async def initiate_call(request: CallRequest):
 
         elif request.mode == "stream":
             # Stream mode: WebSocket Media Streams (requires paid account)
-            twiml_url = f"{settings.BASE_URL}/voice/twiml-stream"
+            twiml_url = f"{settings.BASE_URL}/api/voice/twiml-stream"
 
             call = twilio_client.calls.create(
                 to=phone,

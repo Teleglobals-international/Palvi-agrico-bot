@@ -117,7 +117,7 @@ async def synthesize_speech_to_url(text: str) -> str:
     # 1. Check memory cache (instant)
     if text_hash in _tts_audio_cache:
         logger.info(f"[SARVAM TTS] Memory cache hit: '{text[:30]}'")
-        return f"{base_url}/audio/{text_hash}.wav"
+        return f"{base_url}/api/audio/{text_hash}.wav"
 
     # 2. Check disk cache (fast, no API call)
     disk_path = os.path.join(CACHE_DIR, f"{text_hash}.wav")
@@ -126,7 +126,7 @@ async def synthesize_speech_to_url(text: str) -> str:
             audio_bytes = f.read()
         _tts_audio_cache[text_hash] = audio_bytes
         logger.info(f"[SARVAM TTS] Disk cache hit: '{text[:30]}'")
-        return f"{base_url}/audio/{text_hash}.wav"
+        return f"{base_url}/api/audio/{text_hash}.wav"
 
     # 3. Call Sarvam API (only first time ever for this text)
     try:
@@ -168,7 +168,7 @@ async def synthesize_speech_to_url(text: str) -> str:
                     f.write(audio_bytes)
 
                 logger.info(f"[SARVAM TTS] Generated + cached: {len(audio_bytes)} bytes")
-                return f"{base_url}/audio/{text_hash}.wav"
+                return f"{base_url}/api/audio/{text_hash}.wav"
             else:
                 logger.error(f"[SARVAM TTS] HTTP {response.status_code}: {response.text[:200]}")
                 return ""

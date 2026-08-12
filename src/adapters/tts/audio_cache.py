@@ -158,8 +158,12 @@ def get_cached_script_audio(text: str) -> bytes | None:
 
 
 async def init_script_cache(texts: list[str]):
-    """Pre-cache a list of script texts at startup."""
+    """Pre-cache a list of script texts at startup (concurrent, batched)."""
+    import asyncio
     logger.info(f"[B2] Pre-caching {len(texts)} script nodes...")
-    for text in texts:
-        await cache_script_node(text)
+    # Process in batches of 5 to avoid overwhelming the API
+    batch_size = 5
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i + batch_size]
+        await asyncio.gather(*[cache_script_node(text) for text in batch])
     logger.info("[B2] Script cache ready!")

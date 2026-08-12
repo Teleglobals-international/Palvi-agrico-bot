@@ -67,7 +67,7 @@ async def initiate_call(request: CallRequest):
             "CallerId": settings.EXOTEL_CALLER_ID,
             "Url": app_url,
             "CallType": "trans",  # Transactional call
-            "StatusCallback": f"{settings.BASE_URL}/voice/status",
+            "StatusCallback": f"{settings.BASE_URL}/api/voice/status",
             "CustomField": f"dialect={dialect}",
         }
 
