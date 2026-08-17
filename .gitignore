@@ -1,8 +1,44 @@
+# Python
 __pycache__/
-*.pyc
-.env
-.pytest_cache/
+*.py[cod]
+*$py.class
+*.so
 *.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual Environment
 venv/
 .venv/
-audio_cache/
+env/
+
+# Environment variables
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node (legacy from TS setup)
+node_modules/
+dist/
+package-lock.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Docker
+.docker/
